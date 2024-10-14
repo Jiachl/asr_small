@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
-from loralib import lora
+import loralib as lora
 
 from transformers import WhisperForConditionalGeneration
 import whisper
@@ -86,7 +86,7 @@ class SmallWhisper(nn.Module):
         model = SmallWhisper(config)
         sd = model.state_dict()
         sd_keys = sd.keys()
-        sd_keys = [k for k in model.state_dict() if not k.endswith('attn.tril')] # discard this mask / buffer, not a param
+        sd_keys = [k for k in model.state_dict() if (not k.endswith('attn.tril')) and (not 'lora' in k)] # discard this mask / buffer, not a param
 
         # model_hf = WhisperForConditionalGeneration.from_pretrained(model_type)
         # sd_ref = model_hf.state_dict()
@@ -125,7 +125,7 @@ class Conv(nn.Module):
         x = self.conv1d(x).transpose(1, 2)
         return x
     
-    
+
 class EncBlock(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -146,9 +146,9 @@ class DecBlock(nn.Module):
         super().__init__()
         self.config = config
         self.attn_ln = nn.LayerNorm(config.n_embd)
-        self.attn = SelfAttention(config, is_causal=True, is_enc=False)
+        self.attn = SelfAttention(config, is_causal=True, is_enc=False, use_lora=True)
         self.cross_attn_ln = nn.LayerNorm(config.n_embd)
-        self.cross_attn = CrossAttention(config)
+        self.cross_attn = CrossAttention(config, use_lora=True)
         self.mlp_ln = nn.LayerNorm(config.n_embd)
         self.mlp = MLP(config)
 
