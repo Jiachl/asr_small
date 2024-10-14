@@ -2,6 +2,10 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
+from loralib import lora
+
+from transformers import WhisperForConditionalGeneration
+import whisper
 
 
 @dataclass
@@ -13,7 +17,7 @@ class SmallWhisperConfig:
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
-    
+    lora_r: int = 6
 
 
 class SmallWhisper(nn.Module):
@@ -67,8 +71,6 @@ class SmallWhisper(nn.Module):
         assert model_type in {'small'}
         override_args = override_args or {}
         assert all(k == 'dropout' for k in override_args)
-        from transformers import WhisperForConditionalGeneration
-        import whisper
 
         print("loading weights from pretrained gpt: %s" % model_type)
 
@@ -123,6 +125,7 @@ class Conv(nn.Module):
         x = self.conv1d(x).transpose(1, 2)
         return x
     
+    
 class EncBlock(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -170,13 +173,18 @@ class MLP(nn.Module):
         return x
     
 class SelfAttention(nn.Module):
-    def __init__(self, config, is_causal=False, is_enc=True):
+    def __init__(self, config, is_causal=False, is_enc=True, use_lora=False):
         super().__init__()
         self.n_head = config.n_head
         self.embd = config.n_embd
-        self.key = nn.Linear(config.n_embd, config.n_embd, bias=False)
-        self.query = nn.Linear(config.n_embd, config.n_embd)
-        self.value = nn.Linear(config.n_embd, config.n_embd)
+        if use_lora:
+            self.key = lora.Linear(config.n_embd, config.n_embd, bias=False, r=config.lora_r)
+            self.query = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
+            self.value = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
+        else:
+            self.key = nn.Linear(config.n_embd, config.n_embd, bias=False)
+            self.query = nn.Linear(config.n_embd, config.n_embd)
+            self.value = nn.Linear(config.n_embd, config.n_embd)
         self.out = nn.Linear(config.n_embd, config.n_embd)
         self.is_causal = is_causal
         if is_causal:
@@ -200,13 +208,18 @@ class SelfAttention(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, use_lora=False):
         super().__init__()
         self.n_head = config.n_head
         self.embd = config.n_embd
-        self.key = nn.Linear(config.n_embd, config.n_embd, bias=False)
-        self.query = nn.Linear(config.n_embd, config.n_embd)
-        self.value = nn.Linear(config.n_embd, config.n_embd)
+        if use_lora:
+            self.key = lora.Linear(config.n_embd, config.n_embd, bias=False, r=config.lora_r)
+            self.query = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
+            self.value = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
+        else:
+            self.key = nn.Linear(config.n_embd, config.n_embd, bias=False)
+            self.query = nn.Linear(config.n_embd, config.n_embd)
+            self.value = nn.Linear(config.n_embd, config.n_embd)
         self.out = nn.Linear(config.n_embd, config.n_embd)
             
     def forward(self, x, enc_out):
