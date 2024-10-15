@@ -40,32 +40,38 @@ class SmallWhisper(nn.Module):
         ))
         # self.proj_out = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-    def forward(self, enc_idx, dec_idx):
-        B, C, T = enc_idx.size()
+    def forward(self, input_features, decoder_input_ids, labels=None):
+        B, C, T = input_features.size()
         assert T // 2 <= self.config.enc_block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.enc_block_size}"
-        enc_tok_emb = func.gelu(self.encoder.conv1(enc_idx))
+        enc_tok_emb = func.gelu(self.encoder.conv1(input_features))
         enc_tok_emb = func.gelu(self.encoder.conv2(enc_tok_emb))
         enc_tok_emb = enc_tok_emb.transpose(1, 2)
-        enc_pos = torch.arange(0, enc_tok_emb.shape[1], dtype=torch.long, device=enc_idx.device)
+        enc_pos = torch.arange(0, enc_tok_emb.shape[1], dtype=torch.long, device=input_features.device)
         enc_pos_emb = self.encoder.positional_embedding(enc_pos) # position embeddings of shape (T, n_embd)
         x = enc_tok_emb + enc_pos_emb
         for block in self.encoder.blocks:
             x = block(x)
         x = self.encoder.ln_post(x)
 
-        B, D = dec_idx.size()
+        B, D = decoder_input_ids.size()
         assert D <= self.config.dec_block_size, f"Cannot forward sequence of length {D}, block size is only {self.config.dec_block_size}"
-        dec_pos = torch.arange(0, D, dtype=torch.long, device=dec_idx.device)
-        dec_tok_emb = self.decoder.token_embedding(dec_idx) # token embeddings of shape (B, D, n_embd)
+        dec_pos = torch.arange(0, D, dtype=torch.long, device=decoder_input_ids.device)
+        dec_tok_emb = self.decoder.token_embedding(decoder_input_ids) # token embeddings of shape (B, D, n_embd)
         dec_pos_emb = self.decoder.positional_embedding(dec_pos) # position embeddings of shape (D, n_embd)
         y = dec_tok_emb + dec_pos_emb
         for block in self.decoder.blocks:
             y = block(y, x)
         y = self.decoder.ln(y)
         logits = y @ torch.transpose(self.decoder.token_embedding.weight, 0, 1)
-        return logits
-    
 
+        if labels is not None:
+            loss = func.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1), ignore_index=-1)
+        else:
+            logits = logits[:, -1, :]
+            loss = None
+
+        return logits, loss
+    
     @classmethod
     def from_pretrained(cls, model_type, override_args=None):
         assert model_type in {'small'}
