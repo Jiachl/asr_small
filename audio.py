@@ -1,5 +1,5 @@
 from datasets import load_dataset
-from transformers import WhisperTokenizerFast, WhisperFeatureExtractor
+from transformers import WhisperTokenizerFast, WhisperFeatureExtractor, WhisperProcessor
 import datasets
 from datasets import DatasetDict, concatenate_datasets
 
@@ -16,8 +16,9 @@ class AudioLoaderConfig:
 
 class AudioLoader:
     def __init__(self, config):
-        self.feature_extractor = WhisperFeatureExtractor.from_pretrained("distil-whisper/distil-medium.en")
-        self.tokenizer = WhisperTokenizerFast.from_pretrained("distil-whisper/distil-medium.en")
+        processor = WhisperProcessor.from_pretrained("openai/whisper-small")
+        self.feature_extractor = processor.feature_extractor
+        self.tokenizer = processor.tokenizer
         self.config = config
     
     def get_all(self):

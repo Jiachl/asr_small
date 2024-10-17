@@ -18,6 +18,7 @@ class SmallWhisperConfig:
     n_head: int = 12
     n_embd: int = 768
     lora_r: int = 6
+    use_lora: bool = False
 
 
 class SmallWhisper(nn.Module):
@@ -65,9 +66,8 @@ class SmallWhisper(nn.Module):
         logits = y @ torch.transpose(self.decoder.token_embedding.weight, 0, 1)
 
         if labels is not None:
-            loss = func.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1), ignore_index=-1)
+            loss = func.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1), ignore_index=-100)
         else:
-            logits = logits[:, -1, :]
             loss = None
 
         return logits, loss
@@ -85,6 +85,7 @@ class SmallWhisper(nn.Module):
         }[model_type]
         config_args['vocab_size'] = 51865 
         config_args['enc_block_size'] = 1500
+        config_args['use_lora'] = False
         if 'dropout' in override_args:
             print(f"overriding dropout rate to {override_args['dropout']}")
             config_args['dropout'] = override_args['dropout']
@@ -152,9 +153,9 @@ class DecBlock(nn.Module):
         super().__init__()
         self.config = config
         self.attn_ln = nn.LayerNorm(config.n_embd)
-        self.attn = SelfAttention(config, is_causal=True, is_enc=False, use_lora=True)
+        self.attn = SelfAttention(config, is_causal=True, is_enc=False)
         self.cross_attn_ln = nn.LayerNorm(config.n_embd)
-        self.cross_attn = CrossAttention(config, use_lora=True)
+        self.cross_attn = CrossAttention(config)
         self.mlp_ln = nn.LayerNorm(config.n_embd)
         self.mlp = MLP(config)
 
@@ -179,11 +180,11 @@ class MLP(nn.Module):
         return x
     
 class SelfAttention(nn.Module):
-    def __init__(self, config, is_causal=False, is_enc=True, use_lora=False):
+    def __init__(self, config, is_causal=False, is_enc=True):
         super().__init__()
         self.n_head = config.n_head
         self.embd = config.n_embd
-        if use_lora:
+        if config.use_lora:
             self.key = lora.Linear(config.n_embd, config.n_embd, bias=False, r=config.lora_r)
             self.query = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
             self.value = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
@@ -214,11 +215,11 @@ class SelfAttention(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, config, use_lora=False):
+    def __init__(self, config):
         super().__init__()
         self.n_head = config.n_head
         self.embd = config.n_embd
-        if use_lora:
+        if config.use_lora:
             self.key = lora.Linear(config.n_embd, config.n_embd, bias=False, r=config.lora_r)
             self.query = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
             self.value = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
