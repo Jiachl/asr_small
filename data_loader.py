@@ -6,8 +6,9 @@ import numpy as np
 import torch
 import torch.nn.functional as func
 from torch.utils.data import DataLoader
-from transformers import WhisperProcessor
-from datasets import load_from_disk
+from transformers import WhisperProcessor, WhisperTokenizer, WhisperFeatureExtractor
+from datasets import load_from_disk, Audio
+
 
 
 class WhisperDataLoader:
