@@ -31,6 +31,7 @@ class DataLoaderTest:
     def pad_inputs(self, dataset):
         input_features = [{"input_features": ds["input_features"]} for ds in dataset]
         batch = self.feature_extractor.pad(input_features, return_tensors="pt")
+        
 
         label_features = [{"input_ids": ds["labels"]} for ds in dataset]
         labels_batch = self.tokenizer.pad(label_features, max_length=self.max_target_length, padding='max_length', return_tensors="pt")
@@ -49,6 +50,6 @@ class DataLoaderTest:
         prompt_mask = torch.arange(labels.shape[1]) < bos_index[:, None]
         labels = torch.where(prompt_mask, -100, labels)
 
-        batch["labels"] = labels
-        batch['decoder_input_ids'] = decoder_input_ids
+        batch["labels"] = labels.type(torch.long)
+        batch['decoder_input_ids'] = decoder_input_ids.type(torch.long)
         return batch

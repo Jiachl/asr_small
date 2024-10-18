@@ -152,7 +152,7 @@ class DecBlock(nn.Module):
         super().__init__()
         self.config = config
         self.attn_ln = nn.LayerNorm(config.n_embd)
-        self.attn = SelfAttention(config, is_causal=True, is_enc=False)
+        self.attn = SelfAttention(config, is_causal=True, is_enc=False, use_lora=config.use_lora)
         self.cross_attn_ln = nn.LayerNorm(config.n_embd)
         self.cross_attn = CrossAttention(config)
         self.mlp_ln = nn.LayerNorm(config.n_embd)
@@ -179,11 +179,11 @@ class MLP(nn.Module):
         return x
     
 class SelfAttention(nn.Module):
-    def __init__(self, config, is_causal=False, is_enc=True):
+    def __init__(self, config, is_causal=False, is_enc=True, use_lora=False):
         super().__init__()
         self.n_head = config.n_head
         self.embd = config.n_embd
-        if config.use_lora:
+        if use_lora:
             self.key = lora.Linear(config.n_embd, config.n_embd, bias=False, r=config.lora_r)
             self.query = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
             self.value = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
@@ -202,23 +202,24 @@ class SelfAttention(nn.Module):
         q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
         k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
         v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
-        scale = (k.shape[-1]) ** (-0.5)
-        attn = q @ k.transpose(-2, -1) * scale  # (B, nh, T, T)
-        if self.is_causal:
-            attn = attn.masked_fill(self.tril[:, :, :T, :T] == 0, float('-inf'))
-        attn = func.softmax(attn, dim=-1)
-        y = attn @ v  # (B, nh, T, hs)
+        # scale = (k.shape[-1]) ** (-0.5)
+        # attn = q @ k.transpose(-2, -1) * scale  # (B, nh, T, T)
+        # if self.is_causal:
+        #     attn = attn.masked_fill(self.tril[:, :, :T, :T] == 0, float('-inf'))
+        # attn = func.softmax(attn, dim=-1)
+        # y = attn @ v  # (B, nh, T, hs)
+        y = func.scaled_dot_product_attention(q, k, v, is_causal=self.is_causal)
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         y = self.out(y)  # (B, T, C)
         return y
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, use_lora=False):
         super().__init__()
         self.n_head = config.n_head
         self.embd = config.n_embd
-        if config.use_lora:
+        if use_lora:
             self.key = lora.Linear(config.n_embd, config.n_embd, bias=False, r=config.lora_r)
             self.query = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
             self.value = lora.Linear(config.n_embd, config.n_embd, r=config.lora_r)
@@ -233,10 +234,11 @@ class CrossAttention(nn.Module):
         q = self.query(x).view(B, D, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, D, hs)
         k = self.key(enc_out).view(B, enc_out.size(1), self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
         v = self.value(enc_out).view(B, enc_out.size(1), self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
-        scale = (k.shape[-1]) ** (-0.5)
-        attn = q @ k.transpose(-2, -1) * scale  # (B, nh, D, T)
-        attn = func.softmax(attn, dim=-1)
-        y = attn @ v
+        # scale = (k.shape[-1]) ** (-0.5)
+        # attn = q @ k.transpose(-2, -1) * scale  # (B, nh, D, T)
+        # attn = func.softmax(attn, dim=-1)
+        # y = attn @ v
+        y = func.scaled_dot_product_attention(q, k, v, is_causal=False)
         y = y.transpose(1, 2).contiguous().view(B, D, C)
         y = self.out(y)
         return y
