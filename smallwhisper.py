@@ -18,7 +18,7 @@ class SmallWhisperConfig:
     n_head: int = 12
     n_embd: int = 768
     lora_r: int = 6
-    use_lora: bool = False
+    use_lora: bool = True
 
 
 class SmallWhisper(nn.Module):
@@ -76,7 +76,6 @@ class SmallWhisper(nn.Module):
     def from_pretrained(cls, model_type, override_args=None):
         assert model_type in {'small'}
         override_args = override_args or {}
-        assert all(k == 'dropout' for k in override_args)
 
         print("loading weights from pretrained gpt: %s" % model_type)
 
@@ -86,9 +85,9 @@ class SmallWhisper(nn.Module):
         config_args['vocab_size'] = 51865 
         config_args['enc_block_size'] = 1500
         config_args['use_lora'] = False
-        if 'dropout' in override_args:
-            print(f"overriding dropout rate to {override_args['dropout']}")
-            config_args['dropout'] = override_args['dropout']
+        if 'use_lora' in override_args:
+            print(f"overriding use_lora to {override_args['use_lora']}")
+            config_args['use_lora'] = override_args['use_lora']
         config = SmallWhisperConfig(**config_args)
         model = SmallWhisper(config)
         sd = model.state_dict()
