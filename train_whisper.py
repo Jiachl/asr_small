@@ -10,6 +10,8 @@ import time
 
 
 device = 'cuda'
+dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
+
 torch.cuda.empty_cache()
 total_batch_size = 256
 B = 8
@@ -30,7 +32,8 @@ model = SmallWhisper(SmallWhisperConfig).from_pretrained("small", override_args=
 lora.mark_only_lora_as_trainable(model, bias='lora_only')
 model.to(device)
 print(f"Model loaded and mapped to {device}. Yay")
-    
+
+scaler = torch.amp.GradScaler('cuda', enabled=(dtype == 'float16'))
 # optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=3e-4, betas=(0.9, 0.98), eps=1e-6)
 optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=3e-4, device_type=device)
 model = torch.compile(model)
@@ -45,9 +48,12 @@ for i in range(100):
             logits, loss = model(**batch)
         loss = loss / grad_accum_steps
         loss_accum += loss.detach()
-        loss.backward()
+        scaler.scale(loss).backward()
+    
+    scaler.unscale_(optimizer)
     norm = torch.nn.utils.clip_grad_norm_(filter(lambda p: p.requires_grad, model.parameters()), 1.0)
-    optimizer.step()
+    scaler.step(optimizer)
+    scaler.update()
     torch.cuda.synchronize()
     t1 = time.time()
     tokens_per_sec = batch['decoder_input_ids'].shape[0] * batch['decoder_input_ids'].shape[1] / (t1 - t0)
