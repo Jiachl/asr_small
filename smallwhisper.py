@@ -19,7 +19,7 @@ class SmallWhisperConfig:
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
-    lora_r: int = 6
+    lora_r: int = 32
     use_lora: bool = True
 
 

@@ -14,12 +14,12 @@ from datasets import load_from_disk, Audio
 class WhisperDataLoader:
     def __init__(self):
         self.processor = WhisperProcessor.from_pretrained("openai/whisper-small")
+        self.feature_extractor = WhisperFeatureExtractor.from_pretrained(f"openai/whisper-small")
+        self.tokenizer = WhisperTokenizer.from_pretrained(f"openai/whisper-small", language='german', task='transcribe')
         self.decoder_start_token_id = self.processor.tokenizer.get_vocab()["<|startoftranscript|>"]
         self.decoder_prev_token_id = self.processor.tokenizer.get_vocab()["<|startofprev|>"]
 
-    def load(self, fp, batch_size=128):
-        dataset = load_from_disk(fp)
-        
+    def load(self, dataset, batch_size=128):        
         data_collator = DataCollatorSpeechSeq2SeqWithPadding(
             processor=self.processor,
             decoder_start_token_id=self.decoder_start_token_id,
@@ -41,6 +41,8 @@ class DataCollatorSpeechSeq2SeqWithPadding:
     input_padding: Union[bool, str] = "max_length"
     target_padding: Union[bool, str] = "max_length"
     max_target_length: Optional[int] = None
+    feature_extractor = WhisperFeatureExtractor.from_pretrained(f"openai/whisper-small")
+    tokenizer = WhisperTokenizer.from_pretrained(f"openai/whisper-small", language='german', task='transcribe')
 
     def __call__(self, features: List[Dict[str, Union[List[int], np.ndarray]]]) -> Dict[str, np.ndarray]:
         # split inputs and labels since they have to be of different lengths and need
@@ -51,13 +53,13 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         label_features = {"input_ids": [feature["labels"] for feature in features]}
 
         # reformat list to dict and set to pytorch format
-        batch = self.processor.feature_extractor.pad(
+        batch = self.feature_extractor.pad(
             input_features,
             padding=self.input_padding,
             return_tensors="pt",
         )
 
-        labels_batch = self.processor.tokenizer.pad(
+        labels_batch = self.tokenizer.pad(
             label_features,
             max_length=self.max_target_length,
             padding=self.target_padding,
